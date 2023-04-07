@@ -11,12 +11,16 @@ from datasets import Dataset, load_dataset
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments, EvalPrediction
 from functools import partial
+from label_aae import predict, load_model
 
 def convert_class(c: int):
     if c == 2:
         return {'labels': 0}
     else:
         return {'labels': 1}
+
+def _demo(tweet: str):
+    return {'demo_props': predict(tweet.split())}
 
 def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
         -> Dataset:
@@ -29,7 +33,9 @@ def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
     :param dataset: A dataset
     :param tokenizer: A tokenizer
     :return: The dataset, prepreprocessed using the tokenizer
-    """
+    """ 
+    load_model()
+    dataset = dataset.map(lambda d: _demo(d['tweet']))
     dataset = dataset.map(lambda d: convert_class(d['class']))
     return dataset.map(lambda d: tokenizer(d['tweet'], padding="max_length", truncation=True))
 
@@ -141,10 +147,10 @@ if __name__ == "__main__":  # Use this script to train your model
 
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.1, seed=3463)
+    split = hate_speech["train"].train_test_split(.3, seed=3463)
     hate_speech["train"] = split["train"]
 
-    split = hate_speech["train"].train_test_split(.2, seed=3463)
+    split = hate_speech["train"].train_test_split(.333, seed=3463)
     hate_speech["train"] = split["train"]
     hate_speech["val"] = split["test"]
 

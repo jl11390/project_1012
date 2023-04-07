@@ -41,7 +41,7 @@ if __name__ == "__main__":  # Use this script to test your model
 
     # Load dataset
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.1, seed=3463)
+    split = hate_speech["train"].train_test_split(.333, seed=3463)
     hate_speech["test"] = split["test"]
 
     # Preprocess the dataset for the tester
