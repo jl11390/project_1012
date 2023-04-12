@@ -22,8 +22,22 @@ def convert_class(c: int):
 def convert_original(c: int):
     return {'labels': c}
 
+def convert_class_list(c_list: list):
+    c = max(set(c_list), key=c_list.count)
+    if c == 2:
+        return {'labels': 0}
+    else:
+        return {'labels': 1}
+
+def convert_original_list(c_list: list):
+    c = max(set(c_list), key=c_list.count)
+    return {'labels': c}
+
 def _demo(tweet: str):
     return {'demo_props': predict(tweet.split())}
+
+def _demo_no_split(tweet: str):
+    return {'demo_props': predict(tweet)}
 
 def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
         -> Dataset:
@@ -46,6 +60,28 @@ def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) 
     else:
         raise 'labels not specified'
     return dataset.map(lambda d: tokenizer(d['tweet'], padding="max_length", truncation=True))
+
+def preprocess_dataset_hatexplain(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
+        -> Dataset:
+    """
+    Problem 1d: Implement this function.
+
+    Preprocesses a dataset using a Hugging Face Tokenizer and prepares
+    it for use in a Hugging Face Trainer.
+
+    :param dataset: A dataset
+    :param tokenizer: A tokenizer
+    :return: The dataset, prepreprocessed using the tokenizer
+    """ 
+    load_model()
+    dataset = dataset.map(lambda d: _demo_no_split(d['post_tokens']))
+    if labels == 'class':
+        dataset = dataset.map(lambda d: convert_class_list(d['annotators']['label']))
+    elif labels == 'original':
+        dataset = dataset.map(lambda d: convert_original_list(d['annotators']['label']))
+    else:
+        raise 'labels not specified'
+    return dataset.map(lambda d: tokenizer(d['post_tokens'], padding="max_length", is_split_into_words=True, truncation=True))
 
 
 def init_model(trial: Any, model_name: str, labels: str, use_bitfit: bool = False) -> \
@@ -136,21 +172,22 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     """
     search_space = {
         'per_device_train_batch_size': [64],
-        'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
+        'learning_rate': [3e-4, 1e-4],
+        # 'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
         'num_train_epochs': [4],
         'seed': [3463]
     }
 
     def my_hp_space(trial):
         return {
-            "learning_rate": trial.suggest_categorical("learning_rate", [3e-4, 1e-4, 5e-5, 3e-5]),
+            "learning_rate": trial.suggest_categorical("learning_rate", [3e-4, 1e-4]),
             "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64]),
         }
 
     return {
         'direction': "maximize",
         'backend': "optuna",
-        'n_trials': 20,
+        'n_trials': 2,
         'compute_objective': lambda metrics: metrics['eval_accuracy'],
         'hp_space': my_hp_space,
         'sampler': optuna.samplers.GridSampler(search_space),
@@ -161,12 +198,12 @@ if __name__ == "__main__":  # Use this script to train your model
     
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.2, seed=3463)
-    hate_speech["train"] = split["train"]
+    # split = hate_speech["train"].train_test_split(.2, seed=3463)
+    # hate_speech["train"] = split["train"]
 
-    split = hate_speech["train"].train_test_split(.125, seed=3463)
-    hate_speech["train"] = split["train"]
-    hate_speech["val"] = split["test"]
+    # split = hate_speech["train"].train_test_split(.125, seed=3463)
+    # hate_speech["train"] = split["train"]
+    # hate_speech["val"] = split["test"]
 
     # Preprocess the dataset for the trainer
     labels='original'

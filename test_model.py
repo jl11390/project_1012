@@ -9,7 +9,7 @@ from datasets import load_dataset
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments
 
-from train_model import preprocess_dataset, compute_metrics
+from train_model import preprocess_dataset, compute_metrics, preprocess_dataset_hatexplain
 
 def init_tester(directory: str) -> Trainer:
     """
@@ -27,7 +27,8 @@ def init_tester(directory: str) -> Trainer:
         output_dir = "checkpoints",
         do_train = False,
         do_eval = False,
-        do_predict = True, 
+        do_predict = True,
+        dataloader_drop_last = False,
     )
     tester = Trainer(
                 model = BertForSequenceClassification.from_pretrained(directory), 
@@ -41,18 +42,16 @@ if __name__ == "__main__":  # Use this script to test your model
     labels = 'original'
 
     # Load dataset
-    hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.2, seed=3463)
-    hate_speech["test"] = split["test"]
+    hatexplain = load_dataset("hatexplain")
 
     # Preprocess the dataset for the tester
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    hate_speech["test"] = preprocess_dataset(hate_speech["test"], tokenizer, labels)
+    hatexplain["train"] = preprocess_dataset_hatexplain(hatexplain["train"], tokenizer, labels)
 
     # Set up tester
     tester = init_tester("models/run-0/checkpoint-500")
 
     # Test
-    results = tester.predict(hate_speech["test"])
-    with open("test_results.p", "wb") as f:
+    results = tester.predict(hatexplain["train"])
+    with open("test_results_hatexplain.p", "wb") as f:
         pickle.dump(results, f)
