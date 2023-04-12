@@ -38,15 +38,16 @@ def init_tester(directory: str) -> Trainer:
 
 if __name__ == "__main__":  # Use this script to test your model
     model_name = "vinai/bertweet-base"
+    labels = 'original'
 
     # Load dataset
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.1, seed=3463)
+    split = hate_speech["train"].train_test_split(.2, seed=3463)
     hate_speech["test"] = split["test"]
 
     # Preprocess the dataset for the tester
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    hate_speech["test"] = preprocess_dataset(hate_speech["test"], tokenizer)
+    hate_speech["test"] = preprocess_dataset(hate_speech["test"], tokenizer, labels)
 
     # Set up tester
     tester = init_tester("models/run-0/checkpoint-500")

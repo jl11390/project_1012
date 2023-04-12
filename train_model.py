@@ -11,6 +11,7 @@ from datasets import Dataset, load_dataset
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments, EvalPrediction
 from functools import partial
+from label_aae import predict, load_model
 
 def convert_class(c: int):
     if c == 2:
@@ -18,7 +19,13 @@ def convert_class(c: int):
     else:
         return {'labels': 1}
 
-def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
+def convert_original(c: int):
+    return {'labels': c}
+
+def _demo(tweet: str):
+    return {'demo_props': predict(tweet.split())}
+
+def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
         -> Dataset:
     """
     Problem 1d: Implement this function.
@@ -29,12 +36,19 @@ def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
     :param dataset: A dataset
     :param tokenizer: A tokenizer
     :return: The dataset, prepreprocessed using the tokenizer
-    """
-    dataset = dataset.map(lambda d: convert_class(d['class']))
+    """ 
+    load_model()
+    dataset = dataset.map(lambda d: _demo(d['tweet']))
+    if labels == 'class':
+        dataset = dataset.map(lambda d: convert_class(d['class']))
+    elif labels == 'original':
+        dataset = dataset.map(lambda d: convert_original(d['class']))
+    else:
+        raise 'labels not specified'
     return dataset.map(lambda d: tokenizer(d['tweet'], padding="max_length", truncation=True))
 
 
-def init_model(trial: Any, model_name: str, use_bitfit: bool = False) -> \
+def init_model(trial: Any, model_name: str, labels: str, use_bitfit: bool = False) -> \
         BertForSequenceClassification:
     """
     Problem 1e: Implement this function.
@@ -53,7 +67,13 @@ def init_model(trial: Any, model_name: str, use_bitfit: bool = False) -> \
         than bias terms
     :return: A newly initialized pre-trained Transformer classifier
     """
-    model = BertForSequenceClassification.from_pretrained(model_name, num_labels=2)
+    if labels == 'class':
+        num_labels = 2
+    elif labels == 'original':
+        num_labels = 3
+    else:
+        raise 'labels not specified'
+    model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     if use_bitfit:
         for name, param in model.named_parameters():
             if 'weight' in name:
@@ -71,7 +91,7 @@ def compute_metrics(eval_pred):
     predictions = np.argmax(logits, axis=-1)
     return metric.compute(predictions=predictions, references=labels)
 
-def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset,
+def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset, labels: str,
                  use_bitfit: bool = False) -> Trainer:
     """
     Prolem 1f: Implement this function.
@@ -95,7 +115,7 @@ def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset,
         )
     trainer = Trainer(
         model = None,
-        model_init=lambda: init_model(None, model_name, use_bitfit),
+        model_init=lambda: init_model(None, model_name, labels, use_bitfit),
         args=training_args,
         train_dataset=train_data,
         eval_dataset=val_data,
@@ -138,24 +158,26 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
 
 if __name__ == "__main__":  # Use this script to train your model
     model_name = "vinai/bertweet-base"
-
+    
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.1, seed=3463)
+    split = hate_speech["train"].train_test_split(.2, seed=3463)
     hate_speech["train"] = split["train"]
 
-    split = hate_speech["train"].train_test_split(.2, seed=3463)
+    split = hate_speech["train"].train_test_split(.125, seed=3463)
     hate_speech["train"] = split["train"]
     hate_speech["val"] = split["test"]
 
     # Preprocess the dataset for the trainer
+    labels='original'
+
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer)
-    hate_speech["val"] = preprocess_dataset(hate_speech["val"], tokenizer)
+    hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer, labels)
+    hate_speech["val"] = preprocess_dataset(hate_speech["val"], tokenizer, labels)
 
     # Set up trainer
-    trainer = init_trainer(model_name, hate_speech["train"], hate_speech["val"])
+    trainer = init_trainer(model_name, hate_speech["train"], hate_speech["val"], labels)
 
     # Train and save the best hyperparameters   
     best = trainer.hyperparameter_search(**hyperparameter_search_settings())
