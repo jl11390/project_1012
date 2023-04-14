@@ -5,7 +5,7 @@ import pickle
 
 import evaluate
 import numpy as np
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments
 
@@ -41,17 +41,28 @@ if __name__ == "__main__":  # Use this script to test your model
     model_name = "vinai/bertweet-base"
     labels = 'original'
 
-    # Load dataset
+# Load hate speech and offensive dataset and create validation split
+    hate_speech = load_dataset("hate_speech_offensive")
     hatexplain = load_dataset("hatexplain")
 
-    # Preprocess the dataset for the tester
+    # Preprocess the dataset for the trainer
+    labels='original'
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer, labels)
     hatexplain["train"] = preprocess_dataset_hatexplain(hatexplain["train"], tokenizer, labels)
+    hatexplain["validation"] = preprocess_dataset_hatexplain(hatexplain["validation"], tokenizer, labels)
+    hatexplain["test"] = preprocess_dataset_hatexplain(hatexplain["test"], tokenizer, labels)
+    
+    # concatenate datasets and train val test split
+    bert_dataset = concatenate_datasets([hatexplain['train'], hatexplain['validation'], hatexplain['test'], hate_speech['train']])
+    
+    split = bert_dataset.train_test_split(.2, seed=3463)
 
     # Set up tester
-    tester = init_tester("models/run-0/checkpoint-500")
+    tester = init_tester("models/checkpoint-1000")
 
     # Test
-    results = tester.predict(hatexplain["train"])
-    with open("test_results_hatexplain.p", "wb") as f:
+    results = tester.predict(split["test"])
+    with open("test_results_combine.p", "wb") as f:
         pickle.dump(results, f)

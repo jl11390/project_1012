@@ -7,7 +7,7 @@ from typing import Any, Dict
 import evaluate
 import numpy as np
 import optuna
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, concatenate_datasets
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments, EvalPrediction
 from functools import partial
@@ -36,8 +36,8 @@ def convert_original_list(c_list: list):
 def _demo(tweet: str):
     return {'demo_props': predict(tweet.split())}
 
-def _demo_no_split(tweet: str):
-    return {'demo_props': predict(tweet)}
+def _convert_tweet(post_token: list):
+    return {'tweet': ' '.join(post_token)}
 
 def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
         -> Dataset:
@@ -74,7 +74,8 @@ def preprocess_dataset_hatexplain(dataset: Dataset, tokenizer: AutoTokenizer, la
     :return: The dataset, prepreprocessed using the tokenizer
     """ 
     load_model()
-    dataset = dataset.map(lambda d: _demo_no_split(d['post_tokens']))
+    dataset = dataset.map(lambda d: _convert_tweet(d['post_tokens']))
+    dataset = dataset.map(lambda d: _demo(d['tweet']))
     if labels == 'class':
         dataset = dataset.map(lambda d: convert_class_list(d['annotators']['label']))
     elif labels == 'original':
@@ -171,52 +172,56 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     :return: Keyword arguments for Trainer.hyperparameter_search
     """
     search_space = {
-        'per_device_train_batch_size': [64],
-        'learning_rate': [3e-4, 1e-4],
-        # 'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
-        'num_train_epochs': [4],
+        'per_device_train_batch_size': [64, 128],
+        'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
+        'num_train_epochs': [8],
         'seed': [3463]
     }
 
     def my_hp_space(trial):
         return {
-            "learning_rate": trial.suggest_categorical("learning_rate", [3e-4, 1e-4]),
+            "learning_rate": trial.suggest_categorical("learning_rate", [3e-4, 1e-4, 5e-5, 3e-5]),
             "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64]),
         }
 
     return {
         'direction': "maximize",
         'backend': "optuna",
-        'n_trials': 2,
+        'n_trials': 8,
         'compute_objective': lambda metrics: metrics['eval_accuracy'],
         'hp_space': my_hp_space,
         'sampler': optuna.samplers.GridSampler(search_space),
     }
 
 if __name__ == "__main__":  # Use this script to train your model
-    model_name = "vinai/bertweet-base"
+    # model_name = "vinai/bertweet-base"
+    model_name = "google/bert_uncased_L-4_H-256_A-4"
     
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")
-    # split = hate_speech["train"].train_test_split(.2, seed=3463)
-    # hate_speech["train"] = split["train"]
-
-    # split = hate_speech["train"].train_test_split(.125, seed=3463)
-    # hate_speech["train"] = split["train"]
-    # hate_speech["val"] = split["test"]
+    hatexplain = load_dataset("hatexplain")
 
     # Preprocess the dataset for the trainer
     labels='original'
-
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
     hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer, labels)
-    hate_speech["val"] = preprocess_dataset(hate_speech["val"], tokenizer, labels)
+    hatexplain["train"] = preprocess_dataset_hatexplain(hatexplain["train"], tokenizer, labels)
+    hatexplain["validation"] = preprocess_dataset_hatexplain(hatexplain["validation"], tokenizer, labels)
+    hatexplain["test"] = preprocess_dataset_hatexplain(hatexplain["test"], tokenizer, labels)
+    
+    # concatenate datasets and train val test split
+    bert_dataset = concatenate_datasets([hatexplain['train'], hatexplain['validation'], hatexplain['test'], hate_speech['train']])
+    
+    split = bert_dataset.train_test_split(.2, seed=3463)
+    split_2 = split["train"].train_test_split(.125, seed=3463)
+    split["train"] = split_2["train"]
+    split["val"] = split_2["test"]
 
     # Set up trainer
-    trainer = init_trainer(model_name, hate_speech["train"], hate_speech["val"], labels)
+    trainer = init_trainer(model_name, split["train"], split["val"], labels)
 
     # Train and save the best hyperparameters   
     best = trainer.hyperparameter_search(**hyperparameter_search_settings())
-    with open("train_results.p", "wb") as f:
+    with open("train_results_bert.p", "wb") as f:
         pickle.dump(best, f)
