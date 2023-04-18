@@ -35,8 +35,8 @@ class CustomTrainer(Trainer):
         self.beta=beta
 
     def compute_loss(self, model, inputs, return_outputs=False):
+        print('++++++++++++++++++++++++++++++++++')
         print(inputs.keys())
-        print(inputs)
         labels = inputs["labels"]
         logits, factual_logits, counterfactual_logits = model.forward(
             **inputs, training=True
@@ -54,6 +54,8 @@ class CustomTrainer(Trainer):
         """
         modified prediction step otherwise trainer does not 
         """
+        print('---------------------------------')
+        print(inputs.keys())
         with torch.no_grad():
             # move inputs to cuda 
             original_device = inputs["labels"].device.type
