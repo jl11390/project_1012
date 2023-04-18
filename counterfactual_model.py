@@ -66,14 +66,6 @@ class CustomTrainer(Trainer):
             if prediction_loss_only:
                 return (loss, None, None)
         return loss, logits, labels
-    
-    def _prepare_input(self, data):
-        """
-        Prepares one `data` before feeding it to the model, be it a tensor or a nested list/dictionary of tensors.
-        """
-        print(type(data))
-        print(data) 
-        return data
 
 
 class DebiasBert(nn.Module):
