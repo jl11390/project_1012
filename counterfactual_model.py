@@ -35,8 +35,6 @@ class CustomTrainer(Trainer):
         self.beta=beta
 
     def compute_loss(self, model, inputs, return_outputs=False):
-        print('++++++++++++++++++++++++++++++++++')
-        print(inputs.keys())
         labels = inputs["labels"]
         logits, factual_logits, counterfactual_logits = model.forward(
             **inputs, training=True
@@ -54,8 +52,6 @@ class CustomTrainer(Trainer):
         """
         modified prediction step otherwise trainer does not 
         """
-        print('---------------------------------')
-        print(inputs.keys())
         with torch.no_grad():
             # move inputs to cuda 
             original_device = inputs["labels"].device.type
@@ -74,7 +70,7 @@ class CustomTrainer(Trainer):
 
 class DebiasBert(nn.Module):
 
-    def __init__(self, model_name="vinai/bertweet-base", num_labels=3, hidden_size=128):
+    def __init__(self, model_name="vinai/bertweet-base", num_labels=3, in_features=768, hidden_size=128):
         super(DebiasBert, self).__init__()
         self.bert = AutoModel.from_pretrained(model_name)
         self.num_labels=num_labels
@@ -83,16 +79,17 @@ class DebiasBert(nn.Module):
         self.embedding_layer = copy.deepcopy(self.bert.embeddings)
 
         # initialize linear layers 
-        self.linear = Linear(in_features=128, out_features=1)
-        self.linear_context = Linear(in_features=128, out_features=128, bias=True)
-        self.linear_token = Linear(in_features=128, out_features=128, bias=True)
-        self.classifier = Linear(in_features=128, out_features=3, bias=True)
+        self.linear = Linear(in_features=in_features, out_features=1)
+        self.linear_context = Linear(in_features=in_features, out_features=hidden_size, bias=True)
+        self.linear_token = Linear(in_features=in_features, out_features=hidden_size, bias=True)
+        self.classifier = Linear(in_features=hidden_size, out_features=3, bias=True)
         
 
     def forward(self, input_ids, attention_mask=None, training=False, verbose=False, **kwargs):
         
         # use the embedding to generate 
         embeddings = self.embedding_layer(input_ids)
+        print(embeddings.shape)
         weights = softmax(torch.squeeze(softmax(self.linear(embeddings), dim=1), dim=2), dim=1)
 
         # generate a shallow representation of the data 
@@ -118,24 +115,25 @@ class DebiasBert(nn.Module):
         return SequenceClassifierOutput(loss=None, logits=softmax(output, dim=-1))
 
 
-def init_model(trial: Any, model_name="vinai/bertweet-base", num_labels=3) -> DebiasBert:
+def init_model(trial: Any, model_name="vinai/bertweet-base") -> DebiasBert:
 
-    model = DebiasBert(model_name=model_name, num_labels=num_labels)
+    model = DebiasBert(model_name=model_name, num_labels=3)
     return model 
 
 
 def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset, num_labels=3) -> Trainer:
     training_args = TrainingArguments(
         output_dir="./checkpoints_debias",
-        disable_tqdm=False,
-        metric_for_best_model='eval_accuracy',
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        load_best_model_at_end=True,
+        # disable_tqdm=False,
+        # metric_for_best_model='eval_accuracy',
+        # evaluation_strategy="epoch",
+        # save_strategy="epoch",
+        # load_best_model_at_end=True,
+        remove_unused_columns=False,
     )
     trainer = CustomTrainer(
         model = None,
-        model_init=lambda: init_model(None, model_name, num_labels=num_labels),
+        model_init=lambda: init_model(None, model_name),
         args=training_args,
         train_dataset=train_data,
         eval_dataset=val_data,
@@ -193,7 +191,9 @@ if __name__ == "__main__":  # Use this script to train your model
     
     # concatenate datasets and train val test split
     bert_dataset = concatenate_datasets([hatexplain['train'], hatexplain['validation'], hatexplain['test'], hate_speech['train']])
-    
+    remove_cols = [col for col in bert_dataset.column_names if col not in ['demo_props', 'labels', 'input_ids', 'token_type_ids', 'attention_mask',]]
+    bert_dataset = bert_dataset.remove_columns(remove_cols)
+
     split = bert_dataset.train_test_split(.2, seed=3463)
     split_2 = split["train"].train_test_split(.125, seed=3463)
     split["train"] = split_2["train"]
@@ -202,7 +202,11 @@ if __name__ == "__main__":  # Use this script to train your model
     # Set up trainer
     trainer = init_trainer(model_name, split["train"], split["val"])
 
+
     # Train and save the best hyperparameters   
+    evaluate = trainer.evaluate()
+    print('evaluate')
+
     best = trainer.hyperparameter_search(**hyperparameter_search_settings())
     with open("train_results_debias_bert.p", "wb") as f:
         pickle.dump(best, f)
