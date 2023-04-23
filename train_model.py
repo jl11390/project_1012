@@ -7,7 +7,7 @@ from typing import Any, Dict
 import evaluate
 import numpy as np
 import optuna
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, concatenate_datasets
 from transformers import BertTokenizerFast, BertForSequenceClassification, AutoTokenizer,\
     Trainer, TrainingArguments, EvalPrediction
 from functools import partial
@@ -19,10 +19,27 @@ def convert_class(c: int):
     else:
         return {'labels': 1}
 
+def convert_original(c: int):
+    return {'labels': c}
+
+def convert_class_list(c_list: list):
+    c = max(set(c_list), key=c_list.count)
+    if c == 2:
+        return {'labels': 0}
+    else:
+        return {'labels': 1}
+
+def convert_original_list(c_list: list):
+    c = max(set(c_list), key=c_list.count)
+    return {'labels': c}
+
 def _demo(tweet: str):
     return {'demo_props': predict(tweet.split())}
 
-def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
+def _convert_tweet(post_token: list):
+    return {'tweet': ' '.join(post_token)}
+
+def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
         -> Dataset:
     """
     Problem 1d: Implement this function.
@@ -36,11 +53,39 @@ def preprocess_dataset(dataset: Dataset, tokenizer: AutoTokenizer) \
     """ 
     load_model()
     dataset = dataset.map(lambda d: _demo(d['tweet']))
-    dataset = dataset.map(lambda d: convert_class(d['class']))
+    if labels == 'class':
+        dataset = dataset.map(lambda d: convert_class(d['class']))
+    elif labels == 'original':
+        dataset = dataset.map(lambda d: convert_original(d['class']))
+    else:
+        raise 'labels not specified'
     return dataset.map(lambda d: tokenizer(d['tweet'], padding="max_length", truncation=True))
 
+def preprocess_dataset_hatexplain(dataset: Dataset, tokenizer: AutoTokenizer, labels: str) \
+        -> Dataset:
+    """
+    Problem 1d: Implement this function.
 
-def init_model(trial: Any, model_name: str, use_bitfit: bool = False) -> \
+    Preprocesses a dataset using a Hugging Face Tokenizer and prepares
+    it for use in a Hugging Face Trainer.
+
+    :param dataset: A dataset
+    :param tokenizer: A tokenizer
+    :return: The dataset, prepreprocessed using the tokenizer
+    """ 
+    load_model()
+    dataset = dataset.map(lambda d: _convert_tweet(d['post_tokens']))
+    dataset = dataset.map(lambda d: _demo(d['tweet']))
+    if labels == 'class':
+        dataset = dataset.map(lambda d: convert_class_list(d['annotators']['label']))
+    elif labels == 'original':
+        dataset = dataset.map(lambda d: convert_original_list(d['annotators']['label']))
+    else:
+        raise 'labels not specified'
+    return dataset.map(lambda d: tokenizer(d['post_tokens'], padding="max_length", is_split_into_words=True, truncation=True))
+
+
+def init_model(trial: Any, model_name: str, labels: str, use_bitfit: bool = False) -> \
         BertForSequenceClassification:
     """
     Problem 1e: Implement this function.
@@ -59,7 +104,13 @@ def init_model(trial: Any, model_name: str, use_bitfit: bool = False) -> \
         than bias terms
     :return: A newly initialized pre-trained Transformer classifier
     """
-    model = BertForSequenceClassification.from_pretrained(model_name, num_labels=2)
+    if labels == 'class':
+        num_labels = 2
+    elif labels == 'original':
+        num_labels = 3
+    else:
+        raise 'labels not specified'
+    model = BertForSequenceClassification.from_pretrained(model_name, num_labels=num_labels)
     if use_bitfit:
         for name, param in model.named_parameters():
             if 'weight' in name:
@@ -77,7 +128,7 @@ def compute_metrics(eval_pred):
     predictions = np.argmax(logits, axis=-1)
     return metric.compute(predictions=predictions, references=labels)
 
-def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset,
+def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset, labels: str,
                  use_bitfit: bool = False) -> Trainer:
     """
     Prolem 1f: Implement this function.
@@ -101,7 +152,7 @@ def init_trainer(model_name: str, train_data: Dataset, val_data: Dataset,
         )
     trainer = Trainer(
         model = None,
-        model_init=lambda: init_model(None, model_name, use_bitfit),
+        model_init=lambda: init_model(None, model_name, labels, use_bitfit),
         args=training_args,
         train_dataset=train_data,
         eval_dataset=val_data,
@@ -121,9 +172,9 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     :return: Keyword arguments for Trainer.hyperparameter_search
     """
     search_space = {
-        'per_device_train_batch_size': [64],
+        'per_device_train_batch_size': [64, 128],
         'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
-        'num_train_epochs': [4],
+        'num_train_epochs': [8],
         'seed': [3463]
     }
 
@@ -136,7 +187,7 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     return {
         'direction': "maximize",
         'backend': "optuna",
-        'n_trials': 20,
+        'n_trials': 8,
         'compute_objective': lambda metrics: metrics['eval_accuracy'],
         'hp_space': my_hp_space,
         'sampler': optuna.samplers.GridSampler(search_space),
@@ -144,26 +195,32 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
 
 if __name__ == "__main__":  # Use this script to train your model
     model_name = "vinai/bertweet-base"
-
+    
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")
-    split = hate_speech["train"].train_test_split(.3, seed=3463)
-    hate_speech["train"] = split["train"]
-
-    split = hate_speech["train"].train_test_split(.333, seed=3463)
-    hate_speech["train"] = split["train"]
-    hate_speech["val"] = split["test"]
+    hatexplain = load_dataset("hatexplain")
 
     # Preprocess the dataset for the trainer
+    labels='original'
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer)
-    hate_speech["val"] = preprocess_dataset(hate_speech["val"], tokenizer)
+    hate_speech["train"] = preprocess_dataset(hate_speech["train"], tokenizer, labels)
+    hatexplain["train"] = preprocess_dataset_hatexplain(hatexplain["train"], tokenizer, labels)
+    hatexplain["validation"] = preprocess_dataset_hatexplain(hatexplain["validation"], tokenizer, labels)
+    hatexplain["test"] = preprocess_dataset_hatexplain(hatexplain["test"], tokenizer, labels)
+    
+    # concatenate datasets and train val test split
+    bert_dataset = concatenate_datasets([hatexplain['train'], hatexplain['validation'], hatexplain['test'], hate_speech['train']])
+    
+    split = bert_dataset.train_test_split(.2, seed=3463)
+    split_2 = split["train"].train_test_split(.125, seed=3463)
+    split["train"] = split_2["train"]
+    split["val"] = split_2["test"]
 
     # Set up trainer
-    trainer = init_trainer(model_name, hate_speech["train"], hate_speech["val"])
+    trainer = init_trainer(model_name, split["train"], split["val"], labels)
 
     # Train and save the best hyperparameters   
     best = trainer.hyperparameter_search(**hyperparameter_search_settings())
-    with open("train_results.p", "wb") as f:
+    with open("train_results_bert.p", "wb") as f:
         pickle.dump(best, f)
