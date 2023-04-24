@@ -8,8 +8,8 @@ import numpy as np
 import sys
 import os
 
-vocabfile = "twitteraae/model/model_vocab.txt"
-modelfile = "twitteraae/model/model_count_table.txt"
+vocabfile = "twitteraae/model_vocab.txt"
+modelfile = "twitteraae/model_count_table.txt"
 
 K = 0
 wordprobs = None
