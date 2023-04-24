@@ -42,6 +42,7 @@ class Evaluation:
         self._get_SPD()
         self._get_DI() 
         self._get_AOD()
+        self._get_predictive_parity()
         return self.metrics 
 
     def _get_EOD(self): 
@@ -53,12 +54,12 @@ class Evaluation:
         res = {} 
         white_tpr_1 = ((self.predictions == 1)&(self.labels == 1))[self._white_idx].sum()  / (self.labels == 1)[self._white_idx].sum() 
         aae_tpr_1 = ((self.predictions == 1)&(self.labels == 1))[self._aae_idx].sum()  / (self.labels == 1)[self._aae_idx].sum()  
-        white_tpr_2 = ((self.predictions == 2)&(self.labels == 2))[self._white_idx].sum()  / (self.labels == 2)[self._white_idx].sum() 
-        aae_tpr_2 = ((self.predictions == 2)&(self.labels == 2))[self._aae_idx].sum()  / (self.labels == 2)[self._aae_idx].sum()  
-        white_tpr = ((self.predictions != 0)&(self.labels != 0))[self._white_idx].sum()  / (self.labels != 0)[self._white_idx].sum() 
-        aae_tpr = ((self.predictions != 0)&(self.labels != 0))[self._aae_idx].sum()  / (self.labels != 0)[self._aae_idx].sum()  
+        white_tpr_0 = ((self.predictions == 0)&(self.labels == 0))[self._white_idx].sum()  / (self.labels == 0)[self._white_idx].sum() 
+        aae_tpr_0 = ((self.predictions == 0)&(self.labels == 0))[self._aae_idx].sum()  / (self.labels == 0)[self._aae_idx].sum()  
+        white_tpr = ((self.predictions != 2)&(self.labels != 2))[self._white_idx].sum()  / (self.labels != 2)[self._white_idx].sum() 
+        aae_tpr = ((self.predictions != 2)&(self.labels != 2))[self._aae_idx].sum()  / (self.labels != 2)[self._aae_idx].sum()  
         res['EOD_1'] = white_tpr_1 - aae_tpr_1 
-        res['EOD_2'] = white_tpr_2 - aae_tpr_2 
+        res['EOD_0'] = white_tpr_0 - aae_tpr_0 
         res['EOD_comb'] = white_tpr - aae_tpr
         self.metrics['EOD'] = res 
 
@@ -72,12 +73,12 @@ class Evaluation:
         eods = self.metrics['EOD'] 
         white_fpr_1 = ((self.predictions == 1)&(self.labels != 1))[self._white_idx].sum()  / (self.labels != 1)[self._white_idx].sum() 
         aae_fpr_1 = ((self.predictions == 1)&(self.labels != 1))[self._aae_idx].sum()  / (self.labels != 1)[self._aae_idx].sum()
-        white_fpr_2 = ((self.predictions == 2)&(self.labels != 2))[self._white_idx].sum()  / (self.labels != 2)[self._white_idx].sum() 
-        aae_fpr_2 = ((self.predictions == 2)&(self.labels != 2))[self._aae_idx].sum()  / (self.labels != 2)[self._aae_idx].sum() 
-        white_fpr = ((self.predictions != 0)&(self.labels == 0))[self._white_idx].sum()  / (self.labels == 0)[self._white_idx].sum() 
-        aae_fpr = ((self.predictions != 0)&(self.labels == 0))[self._aae_idx].sum()  / (self.labels == 0)[self._aae_idx].sum()
+        white_fpr_0 = ((self.predictions == 0)&(self.labels != 0))[self._white_idx].sum()  / (self.labels != 0)[self._white_idx].sum() 
+        aae_fpr_0 = ((self.predictions == 0)&(self.labels != 0))[self._aae_idx].sum()  / (self.labels != 0)[self._aae_idx].sum() 
+        white_fpr = ((self.predictions != 2)&(self.labels == 2))[self._white_idx].sum()  / (self.labels == 2)[self._white_idx].sum() 
+        aae_fpr = ((self.predictions != 2)&(self.labels == 2))[self._aae_idx].sum()  / (self.labels == 2)[self._aae_idx].sum()
         res['AOD_1'] = 1/2 * (white_fpr_1-aae_fpr_1+eods['EOD_1']) 
-        res['AOD_2'] = 1/2 * (white_fpr_2-aae_fpr_2+eods['EOD_2']) 
+        res['AOD_0'] = 1/2 * (white_fpr_0-aae_fpr_0+eods['EOD_0']) 
         res['AOD_comb'] = 1/2 * (white_fpr-aae_fpr+eods['EOD_comb']) 
         self.metrics['AOD'] = res 
 
@@ -91,8 +92,8 @@ class Evaluation:
         pred_white = self.predictions[self._white_idx] 
         pred_aae = self.predictions[self._aae_idx] 
         res['SPD_1'] = ((pred_white == 1).sum()/pred_white.shape[0]) - ((pred_aae == 1).sum()/pred_aae.shape[0]) 
-        res['SPD_2'] = ((pred_white == 2).sum()/pred_white.shape[0]) - ((pred_aae == 2).sum()/pred_aae.shape[0]) 
-        res['SPD_comb'] = ((pred_white != 0).sum()/pred_white.shape[0]) - ((pred_aae != 0).sum()/pred_aae.shape[0]) 
+        res['SPD_0'] = ((pred_white == 0).sum()/pred_white.shape[0]) - ((pred_aae == 0).sum()/pred_aae.shape[0]) 
+        res['SPD_comb'] = ((pred_white != 2).sum()/pred_white.shape[0]) - ((pred_aae != 2).sum()/pred_aae.shape[0]) 
         self.metrics['SPD'] = res
 
     def _get_DI(self): 
@@ -105,8 +106,26 @@ class Evaluation:
         res = {} 
         pred_white = self.predictions[self._white_idx] 
         pred_aae = self.predictions[self._aae_idx] 
-        res['DI_non'] = ((pred_aae == 0).sum()/pred_aae.shape[0]) / ((pred_white == 0).sum()/pred_white.shape[0])
+        res['DI_non'] = ((pred_aae == 2).sum()/pred_aae.shape[0]) / ((pred_white == 2).sum()/pred_white.shape[0])
         res['DI_tox_1'] = ((pred_aae == 1).sum()/pred_aae.shape[0]) / ((pred_white == 1).sum()/pred_white.shape[0])
-        res['DI_tox_2'] = ((pred_aae == 2).sum()/pred_aae.shape[0]) / ((pred_white == 2).sum()/pred_white.shape[0]) 
-        res['DI_tox_comb'] = ((pred_aae != 0).sum()/pred_aae.shape[0]) / ((pred_white != 0).sum()/pred_white.shape[0]) 
+        res['DI_tox_0'] = ((pred_aae == 0).sum()/pred_aae.shape[0]) / ((pred_white == 0).sum()/pred_white.shape[0]) 
+        res['DI_tox_comb'] = ((pred_aae != 2).sum()/pred_aae.shape[0]) / ((pred_white != 2).sum()/pred_white.shape[0]) 
         self.metrics['DI'] = res
+
+    def _get_predictive_parity(self):
+        '''
+        {
+            difference in precision rates; 
+        }
+        ''' 
+        res = {} 
+        white_prec_1 = ((self.predictions == 1)&(self.labels == 1))[self._white_idx].sum()  / (self.predictions == 1)[self._white_idx].sum() 
+        aae_prec_1 = ((self.predictions == 1)&(self.labels == 1))[self._aae_idx].sum()  / (self.predictions == 1)[self._aae_idx].sum() 
+        white_prec_0 = ((self.predictions == 0)&(self.labels == 0))[self._white_idx].sum()  / (self.predictions == 0)[self._white_idx].sum() 
+        aae_prec_0 = ((self.predictions == 0)&(self.labels == 0))[self._aae_idx].sum()  / (self.predictions == 0)[self._aae_idx].sum() 
+        white_prec = ((self.predictions != 2)&(self.labels != 2))[self._white_idx].sum()  / (self.predictions != 2)[self._white_idx].sum() 
+        aae_prec = ((self.predictions != 2)&(self.labels != 2))[self._aae_idx].sum()  / (self.predictions != 2)[self._aae_idx].sum() 
+        res['PP_1'] = white_prec_1 - aae_prec_1 
+        res['PP_0'] = white_prec_0 - aae_prec_0
+        res['PP_comb'] = white_prec - aae_prec
+        self.metrics['PP'] = res 
