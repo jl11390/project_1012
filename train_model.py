@@ -174,14 +174,14 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     search_space = {
         'per_device_train_batch_size': [64, 128],
         'learning_rate': [3e-4, 1e-4, 5e-5, 3e-5],
-        'num_train_epochs': [8],
+        'num_train_epochs': [16],
         'seed': [3463]
     }
 
     def my_hp_space(trial):
         return {
             "learning_rate": trial.suggest_categorical("learning_rate", [3e-4, 1e-4, 5e-5, 3e-5]),
-            "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64]),
+            "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [64, 128]),
         }
 
     return {
@@ -194,8 +194,7 @@ def hyperparameter_search_settings() -> Dict[str, Any]:
     }
 
 if __name__ == "__main__":  # Use this script to train your model
-    # model_name = "vinai/bertweet-base"
-    model_name = "google/bert_uncased_L-4_H-256_A-4"
+    model_name = "vinai/bertweet-base"
     
     # Load hate speech and offensive dataset and create validation split
     hate_speech = load_dataset("hate_speech_offensive")

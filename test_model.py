@@ -60,9 +60,9 @@ if __name__ == "__main__":  # Use this script to test your model
     split = bert_dataset.train_test_split(.2, seed=3463)
 
     # Set up tester
-    tester = init_tester("models/checkpoint-1000")
+    tester = init_tester("checkpoints_base/0426/checkpoint-1000")
 
     # Test
     results = tester.predict(split["test"])
-    with open("test_results_combine.p", "wb") as f:
+    with open("test_results_0426.p", "wb") as f:
         pickle.dump(results, f)
