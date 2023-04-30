@@ -3,10 +3,10 @@
 #SBATCH --output=/scratch/jl11390/%j_%x.out
 #SBATCH --error=/scratch/jl11390/%j_%x.err
 #SBATCH --account=ds_ga_1012-2023sp
-#SBATCH --partition=n1s8-v100-1
+#SBATCH --partition=n2c48m24
 #SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
-#SBATCH --mem=10G
+#SBATCH --mem=24G
 #SBATCH --requeue
 
 #SBATCH --mail-type=ALL
